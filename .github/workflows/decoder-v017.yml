@@ -1,4 +1,4 @@
-name: V017K1 Native XVID Integration
+name: V017K2A XVID Context Open
 
 on:
   workflow_dispatch:
@@ -158,22 +158,122 @@ jobs:
             decoder_test/SMS_*.o \
             > decoder_test/timer_fix_symbols.txt
 
-      - name: Prepare native V016 base
+      - name: Prepare native K2A
         run: |
-          mkdir -p native_a native_b
+          mkdir -p native_k2a
 
-          cp -r opl_native/. native_a/
-          cp -r opl_native/. native_b/
+          cp -r opl_native/. native_k2a/
+          cp decoder_test/SMS_*.o native_k2a/
 
-          sed -i 's/V0\.1\.6/V0.1.7K1-A/g' native_a/main.c
-          sed -i 's/V0\.1\.6/V0.1.7K1-B/g' native_b/main.c
+          sed -i 's/V0\.1\.6/V0.1.7K2A/g' native_k2a/main.c
 
-          cp decoder_test/SMS_*.o native_b/
+          cat > native_k2a/xvid_probe.h <<'EOF'
+          #ifndef DG_XVID_PROBE_H
+          #define DG_XVID_PROBE_H
 
-          cat > native_b/Makefile <<'EOF'
+          int dg_xvid_open(
+              unsigned width,
+              unsigned height,
+              unsigned rate,
+              unsigned scale,
+              unsigned tag
+          );
+
+          #endif
+          EOF
+
+          cat > native_k2a/xvid_probe.c <<'EOF'
+          #include <stdlib.h>
+          #include <string.h>
+          #include <debug.h>
+          #include "SMS_MPEG4.h"
+          #include "xvid_probe.h"
+
+          static SMS_CodecContext ctx;
+
+          int dg_xvid_open(
+              unsigned width,
+              unsigned height,
+              unsigned rate,
+              unsigned scale,
+              unsigned tag
+          )
+          {
+              scr_printf("K2A: CONTEXTO\n");
+
+              if (!width || !height || !rate || !scale) {
+                  scr_printf("PARAMETROS INVALIDOS\n");
+                  return 0;
+              }
+
+              if (width > 640 || height > 480) {
+                  scr_printf("RESOLUCAO INVALIDA\n");
+                  return 0;
+              }
+
+              memset(&ctx, 0, sizeof(ctx));
+
+              ctx.m_ID = SMS_CodecID_MPEG4;
+              ctx.m_Type = SMS_CodecTypeVideo;
+              ctx.m_Tag = tag;
+              ctx.m_Width = width;
+              ctx.m_Height = height;
+              ctx.m_FrameRate = rate;
+              ctx.m_FrameRateBase = scale;
+              ctx.m_Flags = SMS_CODEC_FLAG_LOW_DELAY;
+
+              scr_printf("CONTEXTO OK\n");
+              scr_printf("ANTES MPEG4 OPEN\n");
+
+              SMS_Codec_MPEG4_Open(&ctx);
+
+              scr_printf("DEPOIS MPEG4 OPEN\n");
+
+              if (!ctx.m_pCodec) {
+                  scr_printf("CODEC NULL\n");
+                  return 0;
+              }
+
+              scr_printf("CODEC OK\n");
+
+              if (!ctx.m_pCodec->m_pName ||
+                  !ctx.m_pCodec->Init ||
+                  !ctx.m_pCodec->Decode ||
+                  !ctx.m_pCodec->Destroy) {
+
+                  scr_printf("PONTEIROS INVALIDOS\n");
+                  return 0;
+              }
+
+              scr_printf("INIT OK\n");
+              scr_printf("DECODE OK\n");
+              scr_printf("DESTROY OK\n");
+              scr_printf("XVID OPEN SUCESSO\n");
+
+              return 1;
+          }
+          EOF
+
+          sed -i '1i#include "xvid_probe.h"' \
+            native_k2a/main.c
+
+          grep -q 'scr_printf("SEM DECODIFICACAO' \
+            native_k2a/main.c
+
+          sed -i '/scr_printf("SEM DECODIFICACAO/i\
+                    if (ok \&\& vol \&\& vop) {\
+                        dg_xvid_open(a.width, a.height,\
+                            a.rate, a.scale, a.codec);\
+                    }' native_k2a/main.c
+
+          grep -n -A8 -B8 'dg_xvid_open(' \
+            native_k2a/main.c
+
+          cat > native_k2a/Makefile <<'EOF'
           EE_BIN = MOVTEST.ELF
-          EE_OBJS = main.o iso.o avi.o SMS_MPEG4.o SMS_MPEG.o SMS_H263.o SMS_VLC.o SMS_DSP.o SMS_DSP_MMI.o SMS_DSP_QPel.o SMS_VideoBuffer.o SMS_RingBuffer.o SMS_IPU.o SMS_IPU_0.o SMS_IPU_1.o SMS_DMA_0.o SMS_DXSB.o SMS_Data.o SMS_MPEGInit.o SMS_VSync.o SMS_Utils.o SMS_Timer.o SMS_GS_0.o SMS_EE.o SMS_Codec.o
+          EE_OBJS = main.o iso.o avi.o xvid_probe.o SMS_MPEG4.o SMS_MPEG.o SMS_H263.o SMS_VLC.o SMS_DSP.o SMS_DSP_MMI.o SMS_DSP_QPel.o SMS_VideoBuffer.o SMS_RingBuffer.o SMS_IPU.o SMS_IPU_0.o SMS_IPU_1.o SMS_DMA_0.o SMS_DXSB.o SMS_Data.o SMS_MPEGInit.o SMS_VSync.o SMS_Utils.o SMS_Timer.o SMS_GS_0.o SMS_EE.o SMS_Codec.o
           EE_LIBS = -ldebug -lcdvd -lm
+          EE_INCS = -I../include -I../src
           EE_CFLAGS = -O2 -G0
           EE_LDFLAGS += -Wl,--gc-sections -Wl,--undefined=SMS_Codec_MPEG4_Open -Wl,-Map=link_map.txt
           all: $(EE_BIN)
@@ -181,100 +281,83 @@ jobs:
           include $(PS2SDK)/samples/Makefile.eeglobal
           EOF
 
-      - name: Build native A and B
+      - name: Build native K2A
         run: |
-          mkdir -p output/TESTE_A
-          mkdir -p output/TESTE_B
+          mkdir -p output/TESTE_K2A
           mkdir -p output/diagnostics
 
-          FAILED=0
+          rm -f native_k2a/MOVTEST.ELF
+          rm -f native_k2a/main.o
+          rm -f native_k2a/iso.o
+          rm -f native_k2a/avi.o
+          rm -f native_k2a/xvid_probe.o
 
-          for variant in a b
-          do
-            DIR="native_$variant"
+          RESULT=0
 
-            rm -f "$DIR/MOVTEST.ELF"
-            rm -f "$DIR/main.o"
-            rm -f "$DIR/iso.o"
-            rm -f "$DIR/avi.o"
+          make -C native_k2a \
+            > output/diagnostics/build_k2a.txt 2>&1 \
+            || RESULT=$?
 
-            if make -C "$DIR" \
-              > "output/diagnostics/build_$variant.txt" 2>&1
-            then
-              if [ -s "$DIR/MOVTEST.ELF" ]; then
+          cat output/diagnostics/build_k2a.txt
 
-                DEST="output/TESTE_A"
+          if [ "$RESULT" -eq 0 ] && \
+             [ -s native_k2a/MOVTEST.ELF ]; then
 
-                if [ "$variant" = "b" ]; then
-                  DEST="output/TESTE_B"
-                fi
+            mips64r5900el-ps2-elf-nm \
+              native_k2a/MOVTEST.ELF \
+              > output/diagnostics/symbols.txt
 
-                cp "$DIR/MOVTEST.ELF" "$DEST/"
-                cp "$DIR/SYSTEM.CNF" "$DEST/"
+            mips64r5900el-ps2-elf-nm \
+              -u native_k2a/MOVTEST.ELF \
+              > output/diagnostics/undefined.txt
 
-                mips64r5900el-ps2-elf-nm \
-                  "$DIR/MOVTEST.ELF" \
-                  > "output/diagnostics/symbols_$variant.txt"
+            grep -E ' [Tt] SMS_Codec_MPEG4_Open$' \
+              output/diagnostics/symbols.txt
 
-                mips64r5900el-ps2-elf-nm \
-                  -u "$DIR/MOVTEST.ELF" \
-                  > "output/diagnostics/undefined_$variant.txt"
+            grep -E ' [Tt] dg_xvid_open$' \
+              output/diagnostics/symbols.txt
 
-                echo "TESTE $variant OK"
-              else
-                FAILED=1
-              fi
-            else
-              echo "TESTE $variant FALHOU"
-              FAILED=1
-            fi
+            cp native_k2a/MOVTEST.ELF output/TESTE_K2A/
+            cp native_k2a/SYSTEM.CNF output/TESTE_K2A/
 
-            cat "output/diagnostics/build_$variant.txt"
-          done
+            echo "K2A ELF GERADO COM SUCESSO" \
+              > output/diagnostics/elf_status.txt
+          else
+            echo "K2A ELF NAO GERADO" \
+              > output/diagnostics/elf_status.txt
 
-          if [ -f output/TESTE_B/MOVTEST.ELF ]; then
-            if grep -E ' [Tt] SMS_Codec_MPEG4_Open$' \
-              output/diagnostics/symbols_b.txt
-            then
-              echo "XVID PRESENTE NO ELF B"
-            else
-              echo "ERRO: XVID AUSENTE NO ELF B"
-              FAILED=1
+            if [ "$RESULT" -eq 0 ]; then
+              RESULT=1
             fi
           fi
 
-          if [ -f native_b/link_map.txt ]; then
-            cp native_b/link_map.txt output/diagnostics/
-          fi
+          cat output/diagnostics/elf_status.txt
 
-          ls -l output/TESTE_A/
-          ls -l output/TESTE_B/
-
-          exit "$FAILED"
+          exit "$RESULT"
 
       - name: Export diagnostics
         if: always()
         run: |
           mkdir -p output/diagnostics
+          mkdir -p output/source
 
           cp decoder_test/*.txt output/diagnostics/ || true
           cp decoder_test/*.log output/diagnostics/ || true
 
-          mkdir -p output/source
-
           cp -r opl_native output/source/
 
-          if [ -d native_a ]; then
-            cp native_a/main.c output/source/main_a.c
-          fi
+          if [ -d native_k2a ]; then
+            cp native_k2a/*.c output/source/
+            cp native_k2a/*.h output/source/
+            cp native_k2a/Makefile output/source/Makefile_K2A
 
-          if [ -d native_b ]; then
-            cp native_b/main.c output/source/main_b.c
-            cp native_b/Makefile output/source/Makefile_B
+            if [ -f native_k2a/link_map.txt ]; then
+              cp native_k2a/link_map.txt output/diagnostics/
+            fi
           fi
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: V017K1-NATIVE-XVID-AB
+          name: V017K2A-XVID-CONTEXT
           path: output/
