@@ -1,0 +1,38 @@
+name: Build Darlon Games Movie Player
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile PS2 ELF
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            ps2dev/ps2dev:v1.0 \
+            sh -c 'apk add --no-cache build-base git zip && make all pack'
+
+      - name: Prepare ELF
+        run: |
+          mkdir -p DIST
+          cp bin/SMS.elf DIST/MOVIE.ELF
+          printf 'BOOT2 = cdrom0:\\MOVIE.ELF;1\r\nVER = 1.00\r\nVMODE = NTSC\r\n' > DIST/SYSTEM.CNF
+
+      - name: Upload Movie Player
+        uses: actions/upload-artifact@v4
+        with:
+          name: DARLON-GAMES-MOVIE-PLAYER
+          path: DIST/
+          if-no-files-found: error
