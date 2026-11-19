@@ -1,7 +1,6 @@
 name: V017 XVID Decoder Probe
 
-on:
-  workflow_dispatch:
+on: [workflow_dispatch, push]
 
 jobs:
   decoder:
