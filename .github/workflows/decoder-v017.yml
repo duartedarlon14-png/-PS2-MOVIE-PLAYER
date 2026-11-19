@@ -69,8 +69,39 @@ jobs:
             -u decoder_test/decoder_combined.o \
             > decoder_test/remaining.txt
 
+      - name: Find remaining decoder sources
+        if: always()
+        run: |
+          {
+            for symbol in \
+              SMS_MPEGContext_Init \
+              SMS_MPEGContext_Destroy \
+              SMS_Rescale \
+              SMS_EstimateVSync \
+              SMS_EEDIntr \
+              SMS_SetAlarm \
+              PowerOf2 \
+              mips_memset \
+              GS_Params \
+              GS_XYZ \
+              g_Config \
+              g_GSCtx \
+              g_XShift \
+              s_Player
+            do
+              echo "=========================="
+              echo "SYMBOL: $symbol"
+              grep -R -n -w "$symbol" src include || true
+            done
+          } > decoder_test/source_map.txt
+
+          find src include -type f \
+            > decoder_test/source_files.txt
+
+          cat decoder_test/source_map.txt
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: V017B-DECODER-EXTENDED
+          name: V017C-DECODER-MAPPING
           path: decoder_test/
