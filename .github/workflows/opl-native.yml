@@ -1,7 +1,5 @@
 name: OPL Native diagnostic
-
 on: [workflow_dispatch, push]
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -9,19 +7,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: apk add --no-cache make binutils
-      - name: Verify source version
-        run: grep -F 'DG MOVIE V0.1.5' opl_native/main.c
-      - name: Clean build
-        run: |
-          make -C opl_native clean
-          make -C opl_native -B
-      - name: Verify ELF version
-        run: |
-          strings opl_native/MOVTEST.ELF | grep -F 'DG MOVIE V0.1.5'
-          sha256sum opl_native/MOVTEST.ELF
+      - run: make -C opl_native -B
+      - run: strings opl_native/MOVTEST.ELF | grep -F "DG MOVIE V0.1.6"
       - uses: actions/upload-artifact@v4
         with:
-          name: MOVIE-OPL-V015-VERIFICADO
+          name: MOVIE-OPL-V016-DIAGNOSTICO
           path: |
             opl_native/MOVTEST.ELF
             opl_native/SYSTEM.CNF
