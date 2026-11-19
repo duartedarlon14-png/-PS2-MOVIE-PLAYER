@@ -1,17 +1,46 @@
 name: OPL Native diagnostic
+
 on: [workflow_dispatch, push]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     container: ps2dev/ps2dev:latest
+
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
+
       - run: apk add --no-cache make binutils
-      - run: make -C opl_native -B
-      - run: strings opl_native/MOVTEST.ELF | grep -F "DG MOVIE V0.1.6"
+
+      - name: Diagnostico dos arquivos
+        run: |
+          pwd
+          git rev-parse HEAD
+          ls -la opl_native
+          cat opl_native/Makefile
+          grep -o 'DG MOVIE V[0-9.]*' opl_native/main.c
+          grep -F "DG MOVIE V0.1.6" opl_native/main.c
+
+      - name: Limpeza completa
+        run: |
+          rm -f opl_native/*.o
+          rm -f opl_native/*.ELF
+          rm -f opl_native/*.elf
+
+      - name: Compilacao
+        run: make -C opl_native -B
+
+      - name: Diagnostico ELF
+        run: |
+          ls -l opl_native/MOVTEST.ELF
+          sha256sum opl_native/MOVTEST.ELF
+          strings -a opl_native/main.o | grep -E 'MOVIE|PACKET' || true
+          strings -a opl_native/MOVTEST.ELF | grep -E 'MOVIE|PACKET' || true
+          strings -a opl_native/MOVTEST.ELF | grep -F "DG MOVIE V0.1.6"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: MOVIE-OPL-V016-DIAGNOSTICO
+          name: MOVIE-OPL-V016-VERIFICADO
           path: |
             opl_native/MOVTEST.ELF
             opl_native/SYSTEM.CNF
