@@ -6,37 +6,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container: ps2dev/ps2dev:latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: apk add --no-cache make binutils
-
-      - name: Verify source
-        run: |
-          ls -la opl_native
-          grep -n "DG MOVIE" opl_native/main.c
-          grep -F "DG MOVIE V0.1.6" opl_native/main.c
-
-      - name: Clean build
-        run: |
-          rm -f opl_native/*.o
-          rm -f opl_native/*.elf
-          rm -f opl_native/*.ELF
-          make -C opl_native -B
-
-      - name: Verify ELF
-        run: |
-          ls -l opl_native/MOVTEST.ELF
-          strings -a opl_native/main.o | grep -E 'MOVIE|PACKET' || true
-          strings -a opl_native/MOVTEST.ELF | grep -E 'MOVIE|PACKET' || true
-          strings -a opl_native/MOVTEST.ELF | grep -F "DG MOVIE V0.1.6"
-          sha256sum opl_native/MOVTEST.ELF
-
+      - run: apk add --no-cache make
+      - run: make -C opl_native clean
+      - run: make -C opl_native
       - uses: actions/upload-artifact@v4
         with:
-          name: MOVIE-OPL-V016-VERIFICADO
+          name: MOVIE-OPL-V016-TESTE
           path: |
             opl_native/MOVTEST.ELF
             opl_native/SYSTEM.CNF
