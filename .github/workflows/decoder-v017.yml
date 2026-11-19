@@ -1,4 +1,4 @@
-name: V017 XVID Decoder Probe
+name: V017K1 Native XVID Integration
 
 on:
   workflow_dispatch:
@@ -69,6 +69,7 @@ jobs:
       - name: Compile XVID modules
         run: |
           FAILED=0
+
           touch decoder_test/build.log
           touch decoder_test/status.txt
 
@@ -144,46 +145,6 @@ jobs:
 
           exit "$FAILED"
 
-      - name: Create link probe
-        run: |
-          cat > decoder_test/probe.c <<'EOF'
-          #include <tamtypes.h>
-          #include <debug.h>
-          #include "SMS_MPEG4.h"
-
-          static void (* volatile decoder_entry)
-            (SMS_CodecContext*) = SMS_Codec_MPEG4_Open;
-
-          int main(void)
-          {
-              init_scr();
-
-              scr_printf("DG MOVIE V0.1.7J2\n");
-              scr_printf("XVID LINK PROBE\n");
-
-              if (decoder_entry != 0)
-                  scr_printf("DECODER SYMBOL OK\n");
-
-              scr_printf("SEM DECODIFICACAO\n");
-
-              for (;;) {
-                  __asm__ volatile("nop");
-              }
-
-              return 0;
-          }
-          EOF
-
-          mips64r5900el-ps2-elf-gcc \
-            -D_EE -O2 -G0 \
-            -ffunction-sections \
-            -fdata-sections \
-            -Iinclude \
-            -I"$PS2SDK/ee/include" \
-            -I"$PS2SDK/common/include" \
-            -c decoder_test/probe.c \
-            -o decoder_test/probe.o
-
       - name: Fix SMS timer symbol conflict
         run: |
           for obj in decoder_test/SMS_*.o
@@ -194,91 +155,126 @@ jobs:
           done
 
           mips64r5900el-ps2-elf-nm \
-            decoder_test/*.o \
+            decoder_test/SMS_*.o \
             > decoder_test/timer_fix_symbols.txt
 
-          grep -E 'g_Timer|DG_SMS_Timer' \
-            decoder_test/timer_fix_symbols.txt || true
-
-      - name: Real ELF link test
+      - name: Prepare native V016 base
         run: |
-          cd decoder_test
+          mkdir -p native_a native_b
 
-          cat > Makefile <<'EOF'
-          EE_BIN = XVIDPROBE.ELF
-          EE_OBJS = probe.o SMS_MPEG4.o SMS_MPEG.o SMS_H263.o SMS_VLC.o SMS_DSP.o SMS_DSP_MMI.o SMS_DSP_QPel.o SMS_VideoBuffer.o SMS_RingBuffer.o SMS_IPU.o SMS_IPU_0.o SMS_IPU_1.o SMS_DMA_0.o SMS_DXSB.o SMS_Data.o SMS_MPEGInit.o SMS_VSync.o SMS_Utils.o SMS_Timer.o SMS_GS_0.o SMS_EE.o SMS_Codec.o
+          cp -r opl_native/. native_a/
+          cp -r opl_native/. native_b/
+
+          sed -i 's/V0\.1\.6/V0.1.7K1-A/g' native_a/main.c
+          sed -i 's/V0\.1\.6/V0.1.7K1-B/g' native_b/main.c
+
+          cp decoder_test/SMS_*.o native_b/
+
+          cat > native_b/Makefile <<'EOF'
+          EE_BIN = MOVTEST.ELF
+          EE_OBJS = main.o iso.o avi.o SMS_MPEG4.o SMS_MPEG.o SMS_H263.o SMS_VLC.o SMS_DSP.o SMS_DSP_MMI.o SMS_DSP_QPel.o SMS_VideoBuffer.o SMS_RingBuffer.o SMS_IPU.o SMS_IPU_0.o SMS_IPU_1.o SMS_DMA_0.o SMS_DXSB.o SMS_Data.o SMS_MPEGInit.o SMS_VSync.o SMS_Utils.o SMS_Timer.o SMS_GS_0.o SMS_EE.o SMS_Codec.o
           EE_LIBS = -ldebug -lcdvd -lm
           EE_CFLAGS = -O2 -G0
-          EE_LDFLAGS += -Wl,--gc-sections -Wl,-Map=elf_link_map.txt -Wl,--print-gc-sections
+          EE_LDFLAGS += -Wl,--gc-sections -Wl,--undefined=SMS_Codec_MPEG4_Open -Wl,-Map=link_map.txt
           all: $(EE_BIN)
           include $(PS2SDK)/samples/Makefile.pref
           include $(PS2SDK)/samples/Makefile.eeglobal
           EOF
 
-          rm -f XVIDPROBE.ELF
+      - name: Build native A and B
+        run: |
+          mkdir -p output/TESTE_A
+          mkdir -p output/TESTE_B
+          mkdir -p output/diagnostics
 
-          RESULT=0
-          make > elf_link.log 2>&1 || RESULT=$?
+          FAILED=0
 
-          cat elf_link.log
+          for variant in a b
+          do
+            DIR="native_$variant"
 
-          grep -E 'undefined reference|multiple definition|error:' \
-            elf_link.log > unresolved.txt || true
+            rm -f "$DIR/MOVTEST.ELF"
+            rm -f "$DIR/main.o"
+            rm -f "$DIR/iso.o"
+            rm -f "$DIR/avi.o"
 
-          if [ "$RESULT" -eq 0 ] && [ -s XVIDPROBE.ELF ]; then
-            mips64r5900el-ps2-elf-nm \
-              XVIDPROBE.ELF > elf_symbols.txt
+            if make -C "$DIR" \
+              > "output/diagnostics/build_$variant.txt" 2>&1
+            then
+              if [ -s "$DIR/MOVTEST.ELF" ]; then
 
-            mips64r5900el-ps2-elf-nm \
-              -u XVIDPROBE.ELF > elf_undefined.txt
+                DEST="output/TESTE_A"
 
-            mips64r5900el-ps2-elf-objdump \
-              -h XVIDPROBE.ELF > elf_sections.txt
+                if [ "$variant" = "b" ]; then
+                  DEST="output/TESTE_B"
+                fi
 
-            echo "ELF GERADO COM SUCESSO" > elf_status.txt
+                cp "$DIR/MOVTEST.ELF" "$DEST/"
+                cp "$DIR/SYSTEM.CNF" "$DEST/"
 
-            ls -lh XVIDPROBE.ELF
+                mips64r5900el-ps2-elf-nm \
+                  "$DIR/MOVTEST.ELF" \
+                  > "output/diagnostics/symbols_$variant.txt"
 
-            RESULT=0
-          else
-            rm -f XVIDPROBE.ELF
-            echo "ELF NAO GERADO" > elf_status.txt
+                mips64r5900el-ps2-elf-nm \
+                  -u "$DIR/MOVTEST.ELF" \
+                  > "output/diagnostics/undefined_$variant.txt"
 
-            if [ "$RESULT" -eq 0 ]; then
-              RESULT=1
+                echo "TESTE $variant OK"
+              else
+                FAILED=1
+              fi
+            else
+              echo "TESTE $variant FALHOU"
+              FAILED=1
+            fi
+
+            cat "output/diagnostics/build_$variant.txt"
+          done
+
+          if [ -f output/TESTE_B/MOVTEST.ELF ]; then
+            if grep -E ' [Tt] SMS_Codec_MPEG4_Open$' \
+              output/diagnostics/symbols_b.txt
+            then
+              echo "XVID PRESENTE NO ELF B"
+            else
+              echo "ERRO: XVID AUSENTE NO ELF B"
+              FAILED=1
             fi
           fi
 
-          cat elf_status.txt
-          cat unresolved.txt
+          if [ -f native_b/link_map.txt ]; then
+            cp native_b/link_map.txt output/diagnostics/
+          fi
 
-          exit "$RESULT"
+          ls -l output/TESTE_A/
+          ls -l output/TESTE_B/
+
+          exit "$FAILED"
 
       - name: Export diagnostics
         if: always()
         run: |
-          mkdir -p decoder_test/diagnostics
+          mkdir -p output/diagnostics
 
-          for obj in decoder_test/*.o
-          do
-            [ -f "$obj" ] || continue
+          cp decoder_test/*.txt output/diagnostics/ || true
+          cp decoder_test/*.log output/diagnostics/ || true
 
-            NAME=$(basename "$obj" .o)
+          mkdir -p output/source
 
-            mips64r5900el-ps2-elf-nm -u "$obj" \
-              > "decoder_test/diagnostics/${NAME}_undefined.txt"
-          done
+          cp -r opl_native output/source/
 
-          mips64r5900el-ps2-elf-gcc --version \
-            > decoder_test/compiler_version.txt
+          if [ -d native_a ]; then
+            cp native_a/main.c output/source/main_a.c
+          fi
 
-          mkdir -p decoder_test/source
-          cp -r src decoder_test/source/
-          cp -r include decoder_test/source/
-          cp -r opl_native decoder_test/source/
+          if [ -d native_b ]; then
+            cp native_b/main.c output/source/main_b.c
+            cp native_b/Makefile output/source/Makefile_B
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: V017J2-XVID-ELF-PROBE
-          path: decoder_test/
+          name: V017K1-NATIVE-XVID-AB
+          path: output/
