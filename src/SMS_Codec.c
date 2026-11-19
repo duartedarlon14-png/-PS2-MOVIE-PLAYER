@@ -28,6 +28,7 @@
 
 #include <malloc.h>
 #include <string.h>
+#include <ctype.h>
 
 static SMS_CodecTag s_CodecVideoTags[] = {
  { SMS_CodecID_MPEG4,     SMS_MKTAG(  'D',  'I',  'V',  'X' ) },
