@@ -1,6 +1,10 @@
 name: V017 XVID Decoder Probe
 
-on: [workflow_dispatch, push]
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/decoder-v017.yml'
 
 jobs:
   decoder:
@@ -10,9 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile isolated XVID decoder
+      - name: Prepare isolated codec
         run: |
           mkdir -p decoder_test
+
+          sed '/^int SMS_CodecOpen (/,/^}  \/\* end SMS_CodecOpen \*\//c\
+          int SMS_CodecOpen ( SMS_CodecContext* apCtx ) {\
+            if (apCtx->m_ID != SMS_CodecID_MPEG4) return 0;\
+            SMS_Codec_MPEG4_Open(apCtx);\
+            return apCtx->m_pCodec != 0;\
+          }' src/SMS_Codec.c > decoder_test/SMS_Codec_XVID.c
+
+          cat decoder_test/SMS_Codec_XVID.c
+
+      - name: Compile isolated decoder
+        run: |
           FAILED=0
 
           for module in \
@@ -25,7 +41,6 @@ jobs:
             SMS_DSP_QPel.S \
             SMS_VideoBuffer.c \
             SMS_RingBuffer.c \
-            SMS_Codec.c \
             SMS_IPU.c \
             SMS_IPU_0.s \
             SMS_IPU_1.c \
@@ -36,8 +51,16 @@ jobs:
             SMS_VSync.c \
             SMS_Utils.S \
             SMS_Timer.s \
-            SMS_GS_0.S
+            SMS_GS_0.S \
+            SMS_EE.c \
+            SMS_Codec.c
           do
+            SOURCE="src/$module"
+
+            if [ "$module" = "SMS_Codec.c" ]; then
+              SOURCE=decoder_test/SMS_Codec_XVID.c
+            fi
+
             echo "COMPILANDO $module"
 
             if mips64r5900el-ps2-elf-gcc \
@@ -49,7 +72,7 @@ jobs:
               -I"$PS2SDK/ee/include" \
               -I"$PS2SDK/common/include" \
               -I"$PS2SDK/ports/include" \
-              -c "src/$module" \
+              -c "$SOURCE" \
               -o "decoder_test/${module%.*}.o"
             then
               echo "OK $module" >> decoder_test/status.txt
@@ -62,7 +85,7 @@ jobs:
           cat decoder_test/status.txt
           exit "$FAILED"
 
-      - name: Isolate MPEG4 entry point
+      - name: Link XVID core
         if: always()
         run: |
           mips64r5900el-ps2-elf-ld \
@@ -81,19 +104,10 @@ jobs:
             > decoder_test/symbols.txt
 
           cat decoder_test/remaining.txt
-
           wc -l decoder_test/remaining.txt
-
-      - name: Export decoder sources
-        if: always()
-        run: |
-          mkdir -p decoder_test/source
-          cp -r include decoder_test/source/
-          cp -r src decoder_test/source/
-          cp -r opl_native decoder_test/source/
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: V017D-XVID-ISOLATED
+          name: V017E-XVID-CORE
           path: decoder_test/
