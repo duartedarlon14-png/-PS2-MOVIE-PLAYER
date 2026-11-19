@@ -11,34 +11,67 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile decoder core
+      - name: Compile decoder extended
         run: |
           mkdir -p decoder_test
+          FAILED=0
 
-          for module in SMS_MPEG4 SMS_MPEG SMS_H263 SMS_VLC SMS_DSP
+          for module in \
+            SMS_MPEG4.c \
+            SMS_MPEG.c \
+            SMS_H263.c \
+            SMS_VLC.c \
+            SMS_DSP.c \
+            SMS_DSP_MMI.S \
+            SMS_DSP_QPel.S \
+            SMS_VideoBuffer.c \
+            SMS_RingBuffer.c \
+            SMS_Codec.c \
+            SMS_IPU.c \
+            SMS_IPU_0.s \
+            SMS_IPU_1.c \
+            SMS_DMA_0.s \
+            SMS_DXSB.c \
+            SMS_Data.c
           do
             echo "COMPILANDO $module"
 
-            mips64r5900el-ps2-elf-gcc \
+            if mips64r5900el-ps2-elf-gcc \
               -D_EE -O2 -G0 \
               -fno-common \
               -Iinclude \
               -I"$PS2SDK/ee/include" \
               -I"$PS2SDK/common/include" \
               -I"$PS2SDK/ports/include" \
-              -c "src/$module.c" \
-              -o "decoder_test/$module.o" || exit 1
+              -c "src/$module" \
+              -o "decoder_test/${module%.*}.o"
+            then
+              echo "OK $module" >> decoder_test/status.txt
+            else
+              echo "FALHA $module" >> decoder_test/status.txt
+              FAILED=1
+            fi
           done
 
+          cat decoder_test/status.txt
+          exit "$FAILED"
+
       - name: Decoder dependencies
+        if: always()
         run: |
           mips64r5900el-ps2-elf-nm \
-            -u decoder_test/*.o \
-            > decoder_test/dependencies.txt
+            decoder_test/*.o \
+            > decoder_test/symbols.txt
 
-          cat decoder_test/dependencies.txt
+          mips64r5900el-ps2-elf-ld \
+            -r decoder_test/*.o \
+            -o decoder_test/decoder_combined.o \
+            && mips64r5900el-ps2-elf-nm \
+            -u decoder_test/decoder_combined.o \
+            > decoder_test/remaining.txt
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: V017-DECODER-PROBE
+          name: V017B-DECODER-EXTENDED
           path: decoder_test/
