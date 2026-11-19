@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare isolated codec
+      - name: Prepare isolated sources
         run: |
           mkdir -p decoder_test
 
@@ -25,7 +25,16 @@ jobs:
             return apCtx->m_pCodec != 0;\
           }' src/SMS_Codec.c > decoder_test/SMS_Codec_XVID.c
 
-          cat decoder_test/SMS_Codec_XVID.c
+          sed \
+            -e 's/fio_dirent_t/io_dirent_t/g' \
+            -e '/#include <fileio.h>/i\
+          #include <ctype.h>\
+          #define NEWLIB_PORT_AWARE' \
+            -e '/^void SMS_EEScanDir (/,/^}  \/\* end SMS_EEScanDir \*\//d' \
+            src/SMS_EE.c > decoder_test/SMS_EE_XVID.c
+
+          grep -A5 '^int SMS_CodecOpen' \
+            decoder_test/SMS_Codec_XVID.c
 
       - name: Compile isolated decoder
         run: |
@@ -57,9 +66,14 @@ jobs:
           do
             SOURCE="src/$module"
 
-            if [ "$module" = "SMS_Codec.c" ]; then
-              SOURCE=decoder_test/SMS_Codec_XVID.c
-            fi
+            case "$module" in
+              SMS_Codec.c)
+                SOURCE=decoder_test/SMS_Codec_XVID.c
+                ;;
+              SMS_EE.c)
+                SOURCE=decoder_test/SMS_EE_XVID.c
+                ;;
+            esac
 
             echo "COMPILANDO $module"
 
@@ -68,7 +82,9 @@ jobs:
               -fno-common \
               -ffunction-sections \
               -fdata-sections \
+              -include ctype.h \
               -Iinclude \
+              -Isrc \
               -I"$PS2SDK/ee/include" \
               -I"$PS2SDK/common/include" \
               -I"$PS2SDK/ports/include" \
@@ -109,5 +125,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: V017E-XVID-CORE
+          name: V017F-XVID-CORE
           path: decoder_test/
