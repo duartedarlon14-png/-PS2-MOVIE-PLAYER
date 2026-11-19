@@ -1,5 +1,5 @@
 EE_BIN = MOVTEST.ELF
-EE_OBJS = main.o iso.o
+EE_OBJS = main.o iso.o avi.o
 EE_LIBS = -ldebug -lcdvd
 EE_CFLAGS = -O2 -G0
 all: $(EE_BIN)
