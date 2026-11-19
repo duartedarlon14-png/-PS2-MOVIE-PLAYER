@@ -18,7 +18,18 @@ jobs:
         run: |
           mkdir -p decoder_test
 
-          sed '/^int SMS_CodecOpen (/,/^}  \/\* end SMS_CodecOpen \*\//c\
+          sed \
+            -e '/#include "SMS_MSMPEG4.h"/d' \
+            -e '/#include "SMS_MPEG12.h"/d' \
+            -e '/#include "SMS_MP123.h"/d' \
+            -e '/#include "SMS_AC3.h"/d' \
+            -e '/#include "SMS_DTS.h"/d' \
+            -e '/#include "SMS_OGG.h"/d' \
+            -e '/#include "SMS_WMA.h"/d' \
+            -e '/#include "SMS_PCM.h"/d' \
+            -e '/#include "SMS_AAC.h"/d' \
+            -e '/#include "SMS_FLAC.h"/d' \
+            -e '/^int SMS_CodecOpen (/,/^}  \/\* end SMS_CodecOpen \*\//c\
           int SMS_CodecOpen ( SMS_CodecContext* apCtx ) {\
             if (apCtx->m_ID != SMS_CodecID_MPEG4) return 0;\
             SMS_Codec_MPEG4_Open(apCtx);\
@@ -27,18 +38,19 @@ jobs:
 
           sed \
             -e 's/fio_dirent_t/io_dirent_t/g' \
-            -e '/#include <fileio.h>/i\
-          #include <ctype.h>\
-          #define NEWLIB_PORT_AWARE' \
             -e '/^void SMS_EEScanDir (/,/^}  \/\* end SMS_EEScanDir \*\//d' \
             src/SMS_EE.c > decoder_test/SMS_EE_XVID.c
 
-          grep -A5 '^int SMS_CodecOpen' \
-            decoder_test/SMS_Codec_XVID.c
+          grep -n -B5 -A5 '#error' \
+            "$PS2SDK/common/include/io_common.h" \
+            "$PS2SDK/ee/include/fileio.h" \
+            > decoder_test/sdk_guards.txt || true
 
-      - name: Compile isolated decoder
+      - name: Compile XVID decoder
         run: |
           FAILED=0
+          touch decoder_test/build.log
+          touch decoder_test/status.txt
 
           for module in \
             SMS_MPEG4.c \
@@ -65,6 +77,13 @@ jobs:
             SMS_Codec.c
           do
             SOURCE="src/$module"
+            EXTRA=""
+
+            case "$module" in
+              *.c)
+                EXTRA="-include ctype.h"
+                ;;
+            esac
 
             case "$module" in
               SMS_Codec.c)
@@ -72,24 +91,26 @@ jobs:
                 ;;
               SMS_EE.c)
                 SOURCE=decoder_test/SMS_EE_XVID.c
+                EXTRA="-include ctype.h -DNEWLIB_PORT_AWARE"
                 ;;
             esac
 
-            echo "COMPILANDO $module"
+            echo "COMPILANDO $module" >> decoder_test/build.log
 
             if mips64r5900el-ps2-elf-gcc \
               -D_EE -O2 -G0 \
               -fno-common \
               -ffunction-sections \
               -fdata-sections \
-              -include ctype.h \
+              $EXTRA \
               -Iinclude \
               -Isrc \
               -I"$PS2SDK/ee/include" \
               -I"$PS2SDK/common/include" \
               -I"$PS2SDK/ports/include" \
               -c "$SOURCE" \
-              -o "decoder_test/${module%.*}.o"
+              -o "decoder_test/${module%.*}.o" \
+              >> decoder_test/build.log 2>&1
             then
               echo "OK $module" >> decoder_test/status.txt
             else
@@ -98,18 +119,21 @@ jobs:
             fi
           done
 
+          cat decoder_test/build.log
           cat decoder_test/status.txt
+
           exit "$FAILED"
 
       - name: Link XVID core
-        if: always()
+        if: success()
         run: |
           mips64r5900el-ps2-elf-ld \
             -r \
             --gc-sections \
             -u SMS_Codec_MPEG4_Open \
             decoder_test/*.o \
-            -o decoder_test/xvid_core.o
+            -o decoder_test/xvid_core.o \
+            > decoder_test/link.log 2>&1
 
           mips64r5900el-ps2-elf-nm \
             -u decoder_test/xvid_core.o \
@@ -125,5 +149,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: V017F-XVID-CORE
+          name: V017G-XVID-CORE
           path: decoder_test/
