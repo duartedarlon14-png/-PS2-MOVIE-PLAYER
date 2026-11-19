@@ -1,8 +1,7 @@
 name: OPL Native diagnostic
+
 on: [workflow_dispatch, push]
-jobs:
-  build:name: OPL Native diagnostic
-on: [workflow_dispatch, push]
+
 jobs:
   build:
     runs-on: ubuntu-latest
