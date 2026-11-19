@@ -1,0 +1,44 @@
+name: V017 XVID Decoder Probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  decoder:
+    runs-on: ubuntu-latest
+    container: ps2dev/ps2dev:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile decoder core
+        run: |
+          mkdir -p decoder_test
+
+          for module in SMS_MPEG4 SMS_MPEG SMS_H263 SMS_VLC SMS_DSP
+          do
+            echo "COMPILANDO $module"
+
+            mips64r5900el-ps2-elf-gcc \
+              -D_EE -O2 -G0 \
+              -fno-common \
+              -Iinclude \
+              -I"$PS2SDK/ee/include" \
+              -I"$PS2SDK/common/include" \
+              -I"$PS2SDK/ports/include" \
+              -c "src/$module.c" \
+              -o "decoder_test/$module.o" || exit 1
+          done
+
+      - name: Decoder dependencies
+        run: |
+          mips64r5900el-ps2-elf-nm \
+            -u decoder_test/*.o \
+            > decoder_test/dependencies.txt
+
+          cat decoder_test/dependencies.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: V017-DECODER-PROBE
+          path: decoder_test/
