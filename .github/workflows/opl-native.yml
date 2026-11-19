@@ -1,6 +1,9 @@
 name: OPL Native diagnostic
 on: [workflow_dispatch, push]
 jobs:
+  build:name: OPL Native diagnostic
+on: [workflow_dispatch, push]
+jobs:
   build:
     runs-on: ubuntu-latest
     container: ps2dev/ps2dev:latest
@@ -10,7 +13,7 @@ jobs:
       - run: make -C opl_native
       - uses: actions/upload-artifact@v4
         with:
-          name: MOVIE-OPL-V013-DIAGNOSTICO
+          name: MOVIE-OPL-V014-DIAGNOSTICO
           path: |
             opl_native/MOVTEST.ELF
             opl_native/SYSTEM.CNF
