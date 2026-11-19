@@ -184,6 +184,19 @@ jobs:
             -c decoder_test/probe.c \
             -o decoder_test/probe.o
 
+            - name: Fix SMS timer symbol conflict
+        run: |
+          for obj in decoder_test/*.o
+          do
+            mips64r5900el-ps2-elf-objcopy \
+              --redefine-sym g_Timer=DG_SMS_Timer \
+              "$obj"
+          done
+
+          mips64r5900el-ps2-elf-nm \
+            decoder_test/*.o \
+            > decoder_test/timer_fix_symbols.txt
+
       - name: Real ELF link test
         run: |
           cd decoder_test
