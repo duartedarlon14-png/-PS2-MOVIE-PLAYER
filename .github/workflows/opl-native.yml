@@ -10,7 +10,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: apk add --no-cache make binutils
+      - name: Install dependencies
+        run: apk add --no-cache make binutils git
 
       - name: Diagnostico dos arquivos
         run: |
@@ -18,7 +19,7 @@ jobs:
           git rev-parse HEAD
           ls -la opl_native
           cat opl_native/Makefile
-          grep -o 'DG MOVIE V[0-9.]*' opl_native/main.c
+          grep -n "DG MOVIE" opl_native/main.c
           grep -F "DG MOVIE V0.1.6" opl_native/main.c
 
       - name: Limpeza completa
