@@ -11,33 +11,28 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: apk add --no-cache make binutils git
+        run: apk add --no-cache make binutils
 
-      - name: Diagnostico dos arquivos
+      - name: Verify source
         run: |
-          pwd
-          git rev-parse HEAD
           ls -la opl_native
-          cat opl_native/Makefile
           grep -n "DG MOVIE" opl_native/main.c
           grep -F "DG MOVIE V0.1.6" opl_native/main.c
 
-      - name: Limpeza completa
+      - name: Clean build
         run: |
           rm -f opl_native/*.o
-          rm -f opl_native/*.ELF
           rm -f opl_native/*.elf
+          rm -f opl_native/*.ELF
+          make -C opl_native -B
 
-      - name: Compilacao
-        run: make -C opl_native -B
-
-      - name: Diagnostico ELF
+      - name: Verify ELF
         run: |
           ls -l opl_native/MOVTEST.ELF
-          sha256sum opl_native/MOVTEST.ELF
           strings -a opl_native/main.o | grep -E 'MOVIE|PACKET' || true
           strings -a opl_native/MOVTEST.ELF | grep -E 'MOVIE|PACKET' || true
           strings -a opl_native/MOVTEST.ELF | grep -F "DG MOVIE V0.1.6"
+          sha256sum opl_native/MOVTEST.ELF
 
       - uses: actions/upload-artifact@v4
         with:
