@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ps2dev/ps2dev:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: apk add --no-cache make binutils
       - run: make -C opl_native -B
       - run: strings opl_native/MOVTEST.ELF | grep -F "DG MOVIE V0.1.6"
