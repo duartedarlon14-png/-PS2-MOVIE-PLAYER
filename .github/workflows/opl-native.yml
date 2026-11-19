@@ -1,0 +1,19 @@
+name: OPL Native diagnostic
+
+on: [workflow_dispatch, push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ps2dev/ps2dev:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: apk add --no-cache make
+      - run: make -C opl_native
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MOVIE-OPL-V011-DIAGNOSTICO
+          path: |
+            opl_native/MOVTEST.ELF
+            opl_native/SYSTEM.CNF
+          if-no-files-found: error
