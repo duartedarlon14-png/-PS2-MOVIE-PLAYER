@@ -14,10 +14,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare isolated sources
+      - name: Prepare compatibility header
         run: |
           mkdir -p decoder_test
 
+          cat > decoder_test/ctype_compat.h <<'EOF'
+          #ifndef DG_CTYPE_COMPAT_H
+          #define DG_CTYPE_COMPAT_H
+
+          #include <ctype.h>
+
+          #undef isalnum
+          #undef isalpha
+          #undef isblank
+          #undef iscntrl
+          #undef isdigit
+          #undef isgraph
+          #undef islower
+          #undef isprint
+          #undef ispunct
+          #undef isspace
+          #undef isupper
+          #undef isxdigit
+          #undef toupper
+          #undef tolower
+          #undef _U
+
+          #endif
+          EOF
+
+      - name: Prepare isolated sources
+        run: |
           sed \
             -e '/#include "SMS_MSMPEG4.h"/d' \
             -e '/#include "SMS_MPEG12.h"/d' \
@@ -40,6 +67,10 @@ jobs:
             -e 's/fio_dirent_t/io_dirent_t/g' \
             -e '/^void SMS_EEScanDir (/,/^}  \/\* end SMS_EEScanDir \*\//d' \
             src/SMS_EE.c > decoder_test/SMS_EE_XVID.c
+
+          grep -n -A60 'SMS_CodecOpen' \
+            decoder_test/SMS_Codec_XVID.c \
+            > decoder_test/codec_check.txt || true
 
           grep -n -B5 -A5 '#error' \
             "$PS2SDK/common/include/io_common.h" \
@@ -81,7 +112,7 @@ jobs:
 
             case "$module" in
               *.c)
-                EXTRA="-include ctype.h"
+                EXTRA="-include decoder_test/ctype_compat.h"
                 ;;
             esac
 
@@ -91,7 +122,7 @@ jobs:
                 ;;
               SMS_EE.c)
                 SOURCE=decoder_test/SMS_EE_XVID.c
-                EXTRA="-include ctype.h -DNEWLIB_PORT_AWARE"
+                EXTRA="-include decoder_test/ctype_compat.h -DNEWLIB_PORT_AWARE"
                 ;;
             esac
 
@@ -146,8 +177,16 @@ jobs:
           cat decoder_test/remaining.txt
           wc -l decoder_test/remaining.txt
 
+      - name: Export source snapshot
+        if: always()
+        run: |
+          mkdir -p decoder_test/source
+          cp -r src decoder_test/source/
+          cp -r include decoder_test/source/
+          cp -r opl_native decoder_test/source/
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: V017G-XVID-CORE
+          name: V017H-XVID-CORE
           path: decoder_test/
